@@ -24,43 +24,66 @@ def download_tiktok(url):
     return None, None
 
 
-# Start
+# Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Send TikTok / YouTube link 📥")
+    await update.message.reply_text(
+        "👋 Welcome!\n\n"
+        "📥 Send any TikTok or YouTube link\n"
+        "🎬 Choose quality (720p / 1080p)\n"
+        "🎵 Or download audio (MP3)\n\n"
+        "🚀 Fast & No Watermark TikTok"
+    )
 
 
-# Message
+# Handle message (UI)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
 
     keyboard = [
-        [InlineKeyboardButton("🎬 720p", callback_data=f"720|{url}")],
-        [InlineKeyboardButton("🎬 1080p", callback_data=f"1080|{url}")],
-        [InlineKeyboardButton("🎵 Audio", callback_data=f"audio|{url}")]
+        [InlineKeyboardButton("🎬 Download 720p", callback_data=f"720|{url}")],
+        [InlineKeyboardButton("🎬 Download 1080p", callback_data=f"1080|{url}")],
+        [InlineKeyboardButton("🎵 Extract Audio (MP3)", callback_data=f"audio|{url}")]
     ]
 
-    await update.message.reply_text("Choose quality 👇", reply_markup=InlineKeyboardMarkup(keyboard))
+    text = f"""
+📥 *Download Request*
+
+🔗 Link:
+{url}
+
+👇 Choose option:
+"""
+
+    await update.message.reply_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
 
 
-# Button click
+# Button click handler
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     mode, url = query.data.split("|")
-    msg = await query.message.reply_text("Starting... ⏳")
+
+    msg = await query.message.reply_text("🚀 Processing your request...")
 
     try:
         # TikTok
         if "tiktok.com" in url:
             file, title = download_tiktok(url)
             if file:
-                await msg.edit_text("Uploading... 📤")
-                await query.message.reply_video(video=open(file, "rb"), caption=title)
+                await msg.edit_text("📤 Uploading your video...")
+                await query.message.reply_video(
+                    video=open(file, "rb"),
+                    caption=f"🎬 {title}"
+                )
                 os.remove(file)
             return
 
-        # Progress hook
+        # Progress
         def progress_hook(d):
             if d['status'] == 'downloading':
                 try:
@@ -68,7 +91,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     context.bot.edit_message_text(
                         chat_id=msg.chat_id,
                         message_id=msg.message_id,
-                        text=f"Downloading... {percent}"
+                        text=f"⏳ Downloading... {percent}"
                     )
                 except:
                     pass
@@ -98,20 +121,28 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             info = ydl.extract_info(url, download=True)
             title = info.get("title", "Downloaded")
 
-        await msg.edit_text("Uploading... 📤")
+        await msg.edit_text("📤 Uploading... Please wait")
 
         for file in os.listdir():
             if file.startswith("file"):
                 if mode == "audio":
-                    await query.message.reply_audio(audio=open(file, "rb"), title=title)
+                    await query.message.reply_audio(
+                        audio=open(file, "rb"),
+                        title=title,
+                        caption=f"🎵 {title}"
+                    )
                 else:
-                    await query.message.reply_video(video=open(file, "rb"), caption=title)
+                    await query.message.reply_video(
+                        video=open(file, "rb"),
+                        caption=f"🎬 {title}"
+                    )
                 os.remove(file)
 
-    except Exception as e:
-        await msg.edit_text("Failed 😢")
+    except:
+        await msg.edit_text("❌ Failed! Try another link")
 
 
+# Run bot
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
