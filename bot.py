@@ -4,7 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import yt_dlp
 
-TOKEN = os.getenv("8659260396:AAHVelixrAQiqvmfLO1kG4kVCQpAoTx73lo")
+TOKEN = os.getenv("TOKEN")
 
 # TikTok no watermark
 def download_tiktok(url):
