@@ -1,153 +1,75 @@
-import os
-import requests
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-import yt_dlp
+const TelegramBot = require('node-telegram-bot-api');
+const { exec } = require('child_process');
+const fs = require('fs');
 
-TOKEN = os.getenv("TOKEN")
+const token = "YOUR_BOT_TOKEN"; // এখানে BotFather token বসাও
+const bot = new TelegramBot(token, { polling: true });
 
-# TikTok no watermark
-def download_tiktok(url):
-    api = f"https://tikwm.com/api/?url={url}"
-    res = requests.get(api).json()
+// 🔹 Start message
+bot.onText(/\/start/, (msg) => {
+  bot.sendMessage(msg.chat.id, "📥 Send any TikTok or YouTube link\n🎬 Choose quality (720p / 1080p)\n🎵 Or download audio (MP3)");
+});
 
-    if res.get("data"):
-        video_url = res["data"]["play"]
-        title = res["data"]["title"]
-        file = "tiktok.mp4"
+// 🔹 Message handler
+bot.on('message', (msg) => {
+  const chatId = msg.chat.id;
+  const text = msg.text;
 
-        video = requests.get(video_url).content
-        with open(file, "wb") as f:
-            f.write(video)
+  if (!text) return;
 
-        return file, title
-    return None, None
+  // Link check
+  if (text.includes("tiktok.com") || text.includes("youtube.com") || text.includes("youtu.be")) {
 
+    bot.sendMessage(chatId, "👇 Choose option:", {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🎬 Download 720p", callback_data: `720|${text}` }],
+          [{ text: "🎬 Download 1080p", callback_data: `1080|${text}` }],
+          [{ text: "🎵 Extract Audio (MP3)", callback_data: `mp3|${text}` }]
+        ]
+      }
+    });
 
-# Start command
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 Welcome!\n\n"
-        "📥 Send any TikTok or YouTube link\n"
-        "🎬 Choose quality (720p / 1080p)\n"
-        "🎵 Or download audio (MP3)\n\n"
-        "🚀 Fast & No Watermark TikTok"
-    )
+  }
+});
 
+// 🔹 Button click handle
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  const [type, url] = query.data.split("|");
 
-# Handle message (UI)
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text
+  const fileName = `file_${Date.now()}`;
 
-    keyboard = [
-        [InlineKeyboardButton("🎬 Download 720p", callback_data=f"720|{url}")],
-        [InlineKeyboardButton("🎬 Download 1080p", callback_data=f"1080|{url}")],
-        [InlineKeyboardButton("🎵 Extract Audio (MP3)", callback_data=f"audio|{url}")]
-    ]
+  bot.sendMessage(chatId, "⏳ Downloading your file...");
 
-    text = f"""
-📥 *Download Request*
+  let command = "";
 
-🔗 Link:
-{url}
+  if (type === "720") {
+    command = `yt-dlp -f "best[height<=720]" -o "${fileName}.mp4" ${url}`;
+  } 
+  else if (type === "1080") {
+    command = `yt-dlp -f "best[height<=1080]" -o "${fileName}.mp4" ${url}`;
+  } 
+  else if (type === "mp3") {
+    command = `yt-dlp -x --audio-format mp3 -o "${fileName}.mp3" ${url}`;
+  }
 
-👇 Choose option:
-"""
+  exec(command, async (err) => {
+    if (err) {
+      bot.sendMessage(chatId, "❌ Download failed!");
+      return;
+    }
 
-    await update.message.reply_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
-    )
-
-
-# Button click handler
-async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    mode, url = query.data.split("|")
-
-    msg = await query.message.reply_text("🚀 Processing your request...")
-
-    try:
-        # TikTok
-        if "tiktok.com" in url:
-            file, title = download_tiktok(url)
-            if file:
-                await msg.edit_text("📤 Uploading your video...")
-                await query.message.reply_video(
-                    video=open(file, "rb"),
-                    caption=f"🎬 {title}"
-                )
-                os.remove(file)
-            return
-
-        # Progress
-        def progress_hook(d):
-            if d['status'] == 'downloading':
-                try:
-                    percent = d.get('_percent_str', '')
-                    context.bot.edit_message_text(
-                        chat_id=msg.chat_id,
-                        message_id=msg.message_id,
-                        text=f"⏳ Downloading... {percent}"
-                    )
-                except:
-                    pass
-
-        # Format select
-        if mode == "720":
-            fmt = "bestvideo[height<=720]+bestaudio/best[height<=720]"
-        elif mode == "1080":
-            fmt = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
-        else:
-            fmt = "bestaudio"
-
-        ydl_opts = {
-            'outtmpl': 'file.%(ext)s',
-            'format': fmt,
-            'progress_hooks': [progress_hook],
-        }
-
-        # Audio convert
-        if mode == "audio":
-            ydl_opts['postprocessors'] = [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-            }]
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            title = info.get("title", "Downloaded")
-
-        await msg.edit_text("📤 Uploading... Please wait")
-
-        for file in os.listdir():
-            if file.startswith("file"):
-                if mode == "audio":
-                    await query.message.reply_audio(
-                        audio=open(file, "rb"),
-                        title=title,
-                        caption=f"🎵 {title}"
-                    )
-                else:
-                    await query.message.reply_video(
-                        video=open(file, "rb"),
-                        caption=f"🎬 {title}"
-                    )
-                os.remove(file)
-
-    except:
-        await msg.edit_text("❌ Failed! Try another link")
-
-
-# Run bot
-app = ApplicationBuilder().token(TOKEN).build()
-
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-app.add_handler(CallbackQueryHandler(button_click))
-
-print("🚀 Bot Running...")
-app.run_polling()
+    try {
+      if (type === "mp3") {
+        await bot.sendAudio(chatId, `${fileName}.mp3`);
+        fs.unlinkSync(`${fileName}.mp3`);
+      } else {
+        await bot.sendVideo(chatId, `${fileName}.mp4`);
+        fs.unlinkSync(`${fileName}.mp4`);
+      }
+    } catch (e) {
+      bot.sendMessage(chatId, "❌ Sending failed!");
+    }
+  });
+});
